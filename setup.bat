@@ -1,25 +1,35 @@
-
 @echo off
-chcp 65001 >nul
+cd /d "%~dp0"
 
-echo ==============================
-echo AI Arduino 프로젝트 환경 설정
-echo ==============================
+echo ==========================
+echo AI Arduino Project Setup
+echo ==========================
 
-REM 가상환경 생성
+echo.
+echo Creating virtual environment...
+
 if not exist ".venv\Scripts\python.exe" (
-    py -m venv .venv
+    python -m venv .venv
 )
 
-REM 라이브러리 설치
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-
-if errorlevel 1 (
-    echo 라이브러리 설치 실패
+if not exist ".venv\Scripts\python.exe" (
+    echo Failed to create virtual environment.
     pause
     exit /b 1
 )
 
 echo.
-echo 환경 설정 완료!
+echo Installing libraries...
+
+".venv\Scripts\python.exe" -m pip install -r requirements.txt
+
+if errorlevel 1 (
+    echo Installation failed.
+    pause
+    exit /b 1
+)
+
+echo.
+echo Setup completed successfully!
+
 pause
