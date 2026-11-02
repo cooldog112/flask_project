@@ -1,0 +1,84 @@
+
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI 모델 테스트</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script><script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
+<style>
+	body{font-family:Arial;background:#f4f6f9;text-align:center;padding:30px}
+	.container{max-width:700px;margin:auto;background:white;padding:25px;border-radius:12px}
+	button{padding:12px 20px;background:#2563eb;color:white;border:0;border-radius:6px;cursor:pointer;margin:5px}
+	button:disabled{background:#aaa}
+	#webcam-container{margin:20px auto}
+	#webcam-container canvas{max-width:100%;border-radius:10px;transform:scaleX(-1)}
+	#result{font-size:24px;font-weight:bold;margin:20px;color:#2563eb}
+	#status{color:#666;margin-top:10px}
+</style></head><body><div class="container"><h2>AI 이미지 인식 테스트</h2>
+<button id="startBtn" onclick="init()">모델 불러오기 및 시작</button><button id="stopBtn" onclick="stop()" disabled>웹캠 중지</button>
+<p id="status">모델을 불러와 주세요.</p><div id="webcam-container"></div><div id="result">인식 대기 중</div><div id="label-container"></div></div>
+<script>
+	let model,webcam,running=false,session=0,currentLedState=null,isSending=false;
+	const MODEL_URL="https://teachablemachine.withgoogle.com/models/3n2rm875j/";
+	async function init(){
+		const startBtn=document.getElementById("startBtn"),stopBtn=document.getElementById("stopBtn"),currentSession=++session;
+		running=false;startBtn.disabled=true;stopBtn.disabled=true;await closeWebcam();
+		document.getElementById("status").innerText="모델 불러오는 중...";
+		try{
+			const baseURL=MODEL_URL.replace(/(model\.json|metadata\.json)\/?$/,"").replace(/\/?$/,"/");
+			model=await tmImage.load(baseURL+"model.json",baseURL+"metadata.json");
+			if(currentSession!==session)return;
+			webcam=new tmImage.Webcam(320,320,true);await webcam.setup();
+			if(currentSession!==session){await closeWebcam();return;}
+			await webcam.play();
+			const container=document.getElementById("webcam-container");
+			container.innerHTML="";container.appendChild(webcam.canvas);
+			document.getElementById("label-container").innerHTML="";
+			running=true;stopBtn.disabled=false;
+			document.getElementById("status").innerText="AI 모델 실행 중";
+			loop(currentSession);
+		}catch(error){
+			console.error(error);running=false;await closeWebcam();
+			document.getElementById("status").innerText="오류: "+error.message;
+		}finally{startBtn.disabled=false;}
+	}
+	async function loop(currentSession){
+		if(!running||currentSession!==session)return;
+		webcam.update();await predict();
+		if(running&&currentSession===session)requestAnimationFrame(()=>loop(currentSession));
+	}
+	async function predict(){
+		const prediction=await model.predict(webcam.canvas);
+		let maxProbability=0,detectedClass="";
+		for(let i=0;i<prediction.length;i++){
+			if(prediction[i].probability>maxProbability){
+				maxProbability=prediction[i].probability;detectedClass=prediction[i].className;
+			}
+		}
+		if(maxProbability>=0.9)controlLED(detectedClass);
+	}
+	async function closeWebcam(){
+		if(webcam){webcam.stop();webcam=null;}
+		document.getElementById("webcam-container").innerHTML="";
+	}
+	async function stop(){
+		running=false;session++;await closeWebcam();
+		document.getElementById("status").innerText="웹캠 중지됨";
+		document.getElementById("result").innerText="인식 대기 중";
+		document.getElementById("stopBtn").disabled=true;
+	}
+	async function sendCommand(command){
+		if(currentLedState===command||isSending)return;
+		const result=document.getElementById("result");isSending=true;
+		try{
+			const response=await fetch("/ledControl",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({command})});
+			if(!response.ok)throw new Error("서버 오류");
+			const data=await response.json();
+			currentLedState=command;result.textContent=data.message;
+		}catch(error){
+			result.textContent="서버 통신 실패";console.error(error);
+		}finally{isSending=false;}
+	}
+	function ledOn(){sendCommand("on");}
+	function ledOff(){sendCommand("off");}
+	function controlLED(className){
+		if(className==="Class 1")sendCommand("on");
+		else if(className==="Class 2")sendCommand("off");
+	}
+</script></body></html>
